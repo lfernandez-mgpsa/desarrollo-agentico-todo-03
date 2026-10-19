@@ -35,7 +35,7 @@ go build ./...
 - Patrón de handler (ver `actions/tasks.go`): `Find` → 404 con `c.Error`; `ValidateAndCreate/Update`; si hay `verrs` se re-renderiza la plantilla con status 422 y `errors`; si no, flash + redirect 303 a `/`.
 - `models/task.go`: la validación vive en `Validate` (título obligatorio, máx. `TitleMaxLength` = 200 runas, coherente con `size: 200` de la migración). Los campos no editables llevan `form:"-"`; `TasksUpdate` bindea a un struct propio para limitar qué se actualiza.
 - Templates (`templates/`) y assets (`public/`) se embeben en el binario (`embed.go` en cada carpeta); un archivo nuevo se incluye automáticamente. Layout: `application.plush.html`.
-- Los formularios PUT/DELETE usan `_method` oculto + `authenticity_token` (CSRF). `public/assets/app.js` gestiona `data-confirm` e intercepta el formulario de toggle (`data-task-toggle`) para actualizar la UI en cliente. Reglas para formularios y su JS en `docs/formularios-js.md`.
+- Los formularios PUT/DELETE usan `_method` oculto + `authenticity_token` (CSRF). `public/assets/app.js` gestiona `data-confirm` e intercepta el formulario de toggle (`data-task-toggle`) para actualizar la UI en cliente; también gestiona el reorden por arrastre y teclado (`data-task-reorder`, `PUT /tasks/reorder`). Reglas para formularios y su JS en `docs/formularios-js.md`.
 - Tests: `actions` usa `suite.NewActionWithFixtures` con escenarios TOML en `fixtures/` (`as.LoadFixture("tres tareas")`); `models` usa `ModelSuite`.
 - Migraciones: `.fizz` para esquema, `.sql` para datos semilla; nombrado `YYYYMMDDHHMMSS_nombre.{up,down}.*`.
 

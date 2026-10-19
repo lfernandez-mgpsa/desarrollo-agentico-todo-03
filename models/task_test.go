@@ -69,3 +69,28 @@ func (ms *ModelSuite) Test_Task_Toggle_Persists() {
 	ms.NoError(ms.DB.Find(reloaded, task.ID))
 	ms.True(reloaded.Completed)
 }
+
+func (ms *ModelSuite) Test_Task_Create_AssignsNextPosition() {
+	first := &Task{Title: "Primera"}
+	verrs, err := ms.DB.ValidateAndCreate(first)
+	ms.NoError(err)
+	ms.False(verrs.HasAny())
+
+	second := &Task{Title: "Segunda"}
+	verrs, err = ms.DB.ValidateAndCreate(second)
+	ms.NoError(err)
+	ms.False(verrs.HasAny())
+
+	ms.Equal(1, first.Position)
+	ms.Equal(2, second.Position)
+}
+
+func (ms *ModelSuite) Test_Task_Create_KeepsExplicitPosition() {
+	task := &Task{Title: "Con posición", Position: 7}
+	verrs, err := ms.DB.ValidateAndCreate(task)
+	ms.NoError(err)
+	ms.False(verrs.HasAny())
+
+	ms.NoError(ms.DB.Reload(task))
+	ms.Equal(7, task.Position)
+}

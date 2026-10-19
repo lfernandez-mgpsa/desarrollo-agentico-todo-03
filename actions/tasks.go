@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/gobuffalo/buffalo"
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gobuffalo/validate/v3"
+	"github.com/gofrs/uuid"
 )
 
 // TasksIndex muestra la lista de tareas y el formulario de creación.
@@ -16,7 +18,7 @@ func TasksIndex(c buffalo.Context) error {
 	tx := c.Value("tx").(*pop.Connection)
 
 	tasks := models.Tasks{}
-	if err := tx.Order("created_at asc, id asc").All(&tasks); err != nil {
+	if err := tx.Order(models.TasksListOrder).All(&tasks); err != nil {
 		return err
 	}
 
@@ -43,7 +45,7 @@ func TasksCreate(c buffalo.Context) error {
 
 	if verrs.HasAny() {
 		tasks := models.Tasks{}
-		if err := tx.Order("created_at asc, id asc").All(&tasks); err != nil {
+		if err := tx.Order(models.TasksListOrder).All(&tasks); err != nil {
 			return err
 		}
 
@@ -117,6 +119,54 @@ func TasksToggle(c buffalo.Context) error {
 	}
 
 	return c.Redirect(http.StatusSeeOther, "/")
+}
+
+// TasksReorder guarda el orden de la lista recibido como ids, de primera a última.
+func TasksReorder(c buffalo.Context) error {
+	tx := c.Value("tx").(*pop.Connection)
+
+	if err := c.Request().ParseForm(); err != nil {
+		return c.Error(http.StatusBadRequest, err)
+	}
+	ids := c.Request().Form["ids"]
+
+	tasks := models.Tasks{}
+	if err := tx.Select("id").All(&tasks); err != nil {
+		return err
+	}
+	if !sameTaskIDs(ids, tasks) {
+		return c.Error(http.StatusUnprocessableEntity, errors.New("el orden debe incluir cada tarea una sola vez"))
+	}
+
+	for i, id := range ids {
+		if err := tx.RawQuery("UPDATE tasks SET position = ? WHERE id = ?", i+1, id).Exec(); err != nil {
+			return err
+		}
+	}
+
+	return c.Redirect(http.StatusSeeOther, "/")
+}
+
+// sameTaskIDs indica si ids contiene cada tarea de tasks exactamente una vez.
+func sameTaskIDs(ids []string, tasks models.Tasks) bool {
+	if len(ids) != len(tasks) {
+		return false
+	}
+
+	pending := make(map[uuid.UUID]bool, len(tasks))
+	for _, t := range tasks {
+		pending[t.ID] = true
+	}
+
+	for _, raw := range ids {
+		id, err := uuid.FromString(raw)
+		if err != nil || !pending[id] {
+			return false
+		}
+		delete(pending, id)
+	}
+
+	return true
 }
 
 // TasksDestroy elimina una tarea.
