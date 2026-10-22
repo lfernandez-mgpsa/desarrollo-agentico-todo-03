@@ -137,16 +137,19 @@ h1 {
   line-height: 1.55;
 }
 
-.icon-button {
+.control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  border-radius: 6px;
+}
+
+.icon-button {
   padding: 0;
   color: var(--color-muted);
   background: transparent;
   border: 0;
-  border-radius: 6px;
 }
 
 .task-toggle-button,
@@ -297,14 +300,9 @@ input[aria-invalid="true"] {
 }
 
 .button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
-  min-height: 44px;
   padding: 0.6rem 0.9rem;
   border: 1px solid #dadad4;
-  border-radius: 6px;
   color: #41413d;
   background: #f6f6f2;
   font-family: inherit;
