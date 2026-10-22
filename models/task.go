@@ -13,11 +13,15 @@ import (
 // TitleMaxLength es el número máximo de caracteres permitido en el título.
 const TitleMaxLength = 200
 
+// TasksListOrder es el orden en que se muestra la lista de tareas.
+const TasksListOrder = "position asc, created_at asc, id asc"
+
 // Task representa una tarea de la lista.
 type Task struct {
 	ID        uuid.UUID `json:"id" db:"id" form:"-"`
 	Title     string    `json:"title" db:"title" form:"title"`
 	Completed bool      `json:"completed" db:"completed" form:"-"`
+	Position  int       `json:"position" db:"position" form:"-"`
 	CreatedAt time.Time `json:"created_at" db:"created_at" form:"-"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at" form:"-"`
 }
@@ -37,4 +41,12 @@ func (t *Task) Validate(tx *pop.Connection) (*validate.Errors, error) {
 	}
 
 	return verrs, nil
+}
+
+// BeforeCreate coloca la tarea nueva al final de la lista.
+func (t *Task) BeforeCreate(tx *pop.Connection) error {
+	if t.Position != 0 {
+		return nil
+	}
+	return tx.Store.Get(&t.Position, "SELECT COALESCE(MAX(position), 0) + 1 FROM tasks")
 }

@@ -237,3 +237,120 @@ func (as *ActionSuite) Test_TasksUpdate_InvalidID() {
 	res := as.HTML("/tasks/no-es-un-uuid").Put(url.Values{"title": {"Título nuevo"}})
 	as.Equal(404, res.Code)
 }
+
+func (as *ActionSuite) taskAt(title string, position int) *models.Task {
+	task := &models.Task{Title: title, Position: position}
+	verrs, err := as.DB.ValidateAndCreate(task)
+	as.NoError(err)
+	as.False(verrs.HasAny())
+	return task
+}
+
+func (as *ActionSuite) assertTitlesInOrder(body string, titles ...string) {
+	last := -1
+	for _, title := range titles {
+		i := strings.Index(body, title)
+		as.Greater(i, last, "%q debe aparecer después de la tarea anterior", title)
+		last = i
+	}
+}
+
+func (as *ActionSuite) assertPositions(tasks ...*models.Task) {
+	for i, task := range tasks {
+		as.NoError(as.DB.Reload(task))
+		as.Equal(i+1, task.Position, task.Title)
+	}
+}
+
+func (as *ActionSuite) Test_TasksIndex_OrdersByPosition() {
+	as.taskAt("Tarea A", 2)
+	as.taskAt("Tarea B", 1)
+
+	res := as.HTML("/").Get()
+	as.Equal(200, res.Code)
+	as.assertTitlesInOrder(res.Body.String(), "Tarea B", "Tarea A")
+}
+
+func (as *ActionSuite) Test_TasksIndex_RendersReorderControls() {
+	task := as.taskAt("Tarea movible", 1)
+
+	res := as.HTML("/").Get()
+	as.Equal(200, res.Code)
+
+	body := res.Body.String()
+	as.Contains(body, "data-task-reorder")
+	as.Contains(body, `action="/tasks/reorder"`)
+	as.Contains(body, `data-task-id="`+task.ID.String()+`"`)
+	as.Contains(body, "Mover tarea: Tarea movible")
+}
+
+func (as *ActionSuite) Test_TasksCreate_AppendsAtEnd() {
+	as.taskAt("Primera", 1)
+	as.taskAt("Segunda", 2)
+
+	res := as.HTML("/tasks").Post(&models.Task{Title: "Tercera"})
+	as.Equal(303, res.Code)
+
+	task := &models.Task{}
+	as.NoError(as.DB.Where("title = ?", "Tercera").First(task))
+	as.Equal(3, task.Position)
+}
+
+func (as *ActionSuite) Test_TasksReorder_Valid() {
+	a, b, c := as.taskAt("Tarea A", 1), as.taskAt("Tarea B", 2), as.taskAt("Tarea C", 3)
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {c.ID.String(), a.ID.String(), b.ID.String()}})
+	as.Equal(303, res.Code)
+	as.Equal("/", res.Header().Get("Location"))
+	as.assertPositions(c, a, b)
+
+	res = as.HTML("/").Get()
+	as.Equal(200, res.Code)
+	as.assertTitlesInOrder(res.Body.String(), "Tarea C", "Tarea A", "Tarea B")
+}
+
+func (as *ActionSuite) Test_TasksReorder_MissingTask_Invalid() {
+	a, b, c := as.taskAt("Tarea A", 1), as.taskAt("Tarea B", 2), as.taskAt("Tarea C", 3)
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {c.ID.String(), a.ID.String()}})
+	as.Equal(422, res.Code)
+	as.assertPositions(a, b, c)
+}
+
+func (as *ActionSuite) Test_TasksReorder_UnknownTask_Invalid() {
+	a, b, c := as.taskAt("Tarea A", 1), as.taskAt("Tarea B", 2), as.taskAt("Tarea C", 3)
+	unknown := uuid.Must(uuid.NewV4())
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {c.ID.String(), a.ID.String(), unknown.String()}})
+	as.Equal(422, res.Code)
+	as.assertPositions(a, b, c)
+}
+
+func (as *ActionSuite) Test_TasksReorder_Duplicate_Invalid() {
+	a, b, c := as.taskAt("Tarea A", 1), as.taskAt("Tarea B", 2), as.taskAt("Tarea C", 3)
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {a.ID.String(), a.ID.String(), b.ID.String()}})
+	as.Equal(422, res.Code)
+	as.assertPositions(a, b, c)
+}
+
+func (as *ActionSuite) Test_TasksReorder_InvalidID_Invalid() {
+	a, b, c := as.taskAt("Tarea A", 1), as.taskAt("Tarea B", 2), as.taskAt("Tarea C", 3)
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {a.ID.String(), b.ID.String(), "no-es-un-uuid"}})
+	as.Equal(422, res.Code)
+	as.assertPositions(a, b, c)
+}
+
+func (as *ActionSuite) Test_TasksReorder_DoesNotChangeCompletion() {
+	done := &models.Task{Title: "Tarea hecha", Completed: true, Position: 1}
+	verrs, err := as.DB.ValidateAndCreate(done)
+	as.NoError(err)
+	as.False(verrs.HasAny())
+	other := as.taskAt("Tarea pendiente", 2)
+
+	res := as.HTML("/tasks/reorder").Put(url.Values{"ids": {other.ID.String(), done.ID.String()}})
+	as.Equal(303, res.Code)
+	as.assertPositions(other, done)
+	as.True(done.Completed)
+}
