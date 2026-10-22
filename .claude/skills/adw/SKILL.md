@@ -1,7 +1,8 @@
 ---
 name: adw
 description: Workflow completo de un encargo: clasifica, planifica con /feature, /bug o /chore, implementa con /implement, valida, hace commit con /git:commit, publica la rama y abre la PR en el fork y en el repositorio original
-allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Skill
+allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Skill, Agent
+model: claude-opus-5-5
 ---
 
 # Workflow de desarrollo agéntico
@@ -16,6 +17,16 @@ allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Skill
 Ejemplos: `/adw el título de una tarea no puede superar 200 caracteres`, `/adw https://github.com/OWNER/REPO/issues/12 --remote origin --base main`.
 
 Este workflow puede ejecutarse sin supervisión (`claude -p` desde `adws/`). No hagas preguntas: aplica las reglas de este documento y, si algo no puede resolverse con seguridad, detente en la fase correspondiente y explica el bloqueo. Nunca hagas push al remoto `--upstream` (solo recibe la PR), `push --force`, merge, cambios en `main` ni commits que no salgan de `/git:commit`.
+
+## Modelos por fase
+
+| Fase | Modelo | Cómo |
+| --- | --- | --- |
+| 1-3, 6-8 (preparar, clasificar, rama, comprobar, commit, PR) | Opus 5.5 | este workflow (`model: claude-opus-5-5`) |
+| 4. Planificar | Opus 5.5 | subagente con la herramienta Agent, `model: "opus"` |
+| 5. Implementar | Sonnet 5.5 | subagente con la herramienta Agent, `model: "sonnet"` |
+
+Los subagentes son `general-purpose`, no heredan esta conversación y solo saben lo que pongas en su prompt: pásales el encargo completo, la ruta exacta del plan y los límites de su fase, y pídeles que te devuelvan su reporte final íntegro. Espera a que terminen antes de seguir. Si la herramienta Agent no está disponible o el modelo pedido no se puede usar, detente en esa fase y repórtalo: no la ejecutes con otro modelo.
 
 Lleva un registro de cada fase (decisión, comandos y resultado): lo necesitas para el cuerpo de la PR y para el reporte final.
 
@@ -47,20 +58,20 @@ Anota el tipo elegido y el motivo en una frase.
 ## 4. Planificar
 
 1. Ruta del plan: `plans/<tipo>-<slug>.md` (con el mismo sufijo que la rama si lo hubo).
-2. Invoca la skill con la herramienta Skill: `feature`, `bug` o `chore`, con argumentos `<encargo> — escribe el plan exactamente en plans/<tipo>-<slug>.md`.
-3. Ignora su sugerencia final de ejecutar `/implement`: el workflow continúa solo.
+2. Lanza un subagente con `model: "opus"` que invoque la skill `feature`, `bug` o `chore` (herramienta Skill) con argumentos `<encargo> — escribe el plan exactamente en plans/<tipo>-<slug>.md`, que no haga nada más y que devuelva el reporte final de la skill.
+3. Ignora la sugerencia final de ejecutar `/implement`: el workflow continúa solo.
 4. Comprueba que el plan existe, que empieza por `# Feature:`, `# Bug:` o `# Chore:` según el tipo y que contiene las secciones obligatorias de esa skill. Comprueba también con `git status --short` que la planificación no ha tocado nada más. Si falla cualquiera de las dos cosas, detente.
 5. Si el plan deja incertidumbres que impiden implementar con seguridad (secretos, decisiones de producto abiertas, datos que no están en el repositorio), detente aquí y repórtalas.
 
 ## 5. Implementar
 
-1. Invoca la skill `implement` con argumento `plans/<tipo>-<slug>.md`.
+1. Lanza un subagente con `model: "sonnet"` que invoque la skill `implement` (herramienta Skill) con argumento `plans/<tipo>-<slug>.md`, que no haga commit, push ni PR y que devuelva el reporte final de la skill.
 2. Si `implement` informa de un bloqueo o de que el plan está obsoleto, detente: no rediseñes la solución desde este workflow.
 3. Guarda la lista de archivos cambiados que reporta; es el alcance del commit.
 
 ## 6. Comprobar
 
-Ejecuta las validaciones de CI (`.github/workflows/ci.yaml`) y anota el resultado de cada una:
+De vuelta en este workflow (Opus 5.5), sin delegar: no te fíes del reporte del subagente y ejecuta tú las validaciones de CI (`.github/workflows/ci.yaml`), anotando el resultado de cada una:
 
 ```bash
 gofmt -l <archivos .go cambiados>   # debe salir vacío
